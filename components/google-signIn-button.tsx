@@ -71,7 +71,7 @@ export default function GoogleSignInButton() {
                 }
 
                 router.replace(
-                    data.redirect || "/admin/transactions"
+                    data.redirect || "/admin/sales"
                 );
 
                 router.refresh();

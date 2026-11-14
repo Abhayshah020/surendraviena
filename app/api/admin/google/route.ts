@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
         const response = jsonResponse({
             success: true,
             message: "Google authentication successful.",
-            redirect: "/admin/transactions",
+            redirect: "/admin/sales",
             expiresAt: expiresAt.toISOString(),
         });
 
