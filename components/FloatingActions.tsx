@@ -37,97 +37,97 @@ export default function FloatingActions() {
         },
     ]);
 
-const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+    const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
 
-    const trimmedMessage = message.trim();
+        const trimmedMessage = message.trim();
 
-    if (!trimmedMessage || sending) return;
+        if (!trimmedMessage || sending) return;
 
-    const userMessage: ChatMessage = {
-        id: Date.now(),
-        role: "user",
-        text: trimmedMessage,
-    };
-
-    // Save the current conversation before adding the new user message.
-    const conversationHistory = messages.map((item) => ({
-        role: item.role,
-        content: item.text,
-    }));
-
-    setMessages((current) => [...current, userMessage]);
-    setMessage("");
-    setSending(true);
-
-    try {
-        const response = await fetch("/api/chat", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                message: trimmedMessage,
-                history: conversationHistory,
-            }),
-        });
-
-        // Read as text first so an empty/non-JSON response does not
-        // crash with "Unexpected end of JSON input".
-        const rawResponse = await response.text();
-
-        let data: {
-            message?: string;
-            error?: string;
-        } = {};
-
-        if (rawResponse) {
-            try {
-                data = JSON.parse(rawResponse);
-            } catch (parseError) {
-                console.error("Invalid API response:", rawResponse);
-                throw new Error(
-                    "The AI server returned an invalid response."
-                );
-            }
-        }
-
-        if (!response.ok) {
-            throw new Error(
-                data.error ||
-                    `AI request failed with status ${response.status}.`
-            );
-        }
-
-        if (!data.message) {
-            throw new Error("The AI returned an empty response.");
-        }
-
-        const assistantMessage: ChatMessage = {
-            id: Date.now() + 1,
-            role: "assistant",
-            text: data.message,
+        const userMessage: ChatMessage = {
+            id: Date.now(),
+            role: "user",
+            text: trimmedMessage,
         };
 
-        setMessages((current) => [...current, assistantMessage]);
-    } catch (error) {
-        console.error("AI chat error:", error);
+        // Save the current conversation before adding the new user message.
+        const conversationHistory = messages.map((item) => ({
+            role: item.role,
+            content: item.text,
+        }));
 
-        setMessages((current) => [
-            ...current,
-            {
+        setMessages((current) => [...current, userMessage]);
+        setMessage("");
+        setSending(true);
+
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    message: trimmedMessage,
+                    history: conversationHistory,
+                }),
+            });
+
+            // Read as text first so an empty/non-JSON response does not
+            // crash with "Unexpected end of JSON input".
+            const rawResponse = await response.text();
+
+            let data: {
+                message?: string;
+                error?: string;
+            } = {};
+
+            if (rawResponse) {
+                try {
+                    data = JSON.parse(rawResponse);
+                } catch (parseError) {
+                    console.error("Invalid API response:", rawResponse);
+                    throw new Error(
+                        "The AI server returned an invalid response."
+                    );
+                }
+            }
+
+            if (!response.ok) {
+                throw new Error(
+                    data.error ||
+                    `AI request failed with status ${response.status}.`
+                );
+            }
+
+            if (!data.message) {
+                throw new Error("The AI returned an empty response.");
+            }
+
+            const assistantMessage: ChatMessage = {
                 id: Date.now() + 1,
                 role: "assistant",
-                text:
-                    error instanceof Error
-                        ? error.message
-                        : "I'm sorry, but I couldn't connect to the health information assistant right now. Please try again shortly or contact the clinic directly.",
-            },
-        ]);
-    } finally {
-        setSending(false);
-    }
-};
+                text: data.message,
+            };
+
+            setMessages((current) => [...current, assistantMessage]);
+        } catch (error) {
+            console.error("AI chat error:", error);
+
+            setMessages((current) => [
+                ...current,
+                {
+                    id: Date.now() + 1,
+                    role: "assistant",
+                    text:
+                        error instanceof Error
+                            ? error.message
+                            : "I'm sorry, but I couldn't connect to the health information assistant right now. Please try again shortly or contact the clinic directly.",
+                },
+            ]);
+        } finally {
+            setSending(false);
+        }
+    };
 
     return (
         <>

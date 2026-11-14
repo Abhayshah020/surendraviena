@@ -1,0 +1,1 @@
+DROP INDEX "sales_invoice_number_idx";
