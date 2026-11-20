@@ -22,15 +22,89 @@ import {
 
 import { formatNPR } from "../../../../../lib/utils/currency";
 
+export interface ProductBatch {
+  id: string;
+  batchNumber: string;
+  costPrice: string;
+  sellingPrice: string;
+  quantity: number;
+  expiryDate: string;
+  receivedAt: string;
+  isActive: boolean;
+}
+
 interface Product {
   id: string;
   name: string;
   imageUrl: string | null;
-  sellingPrice: string;
+  isActive: boolean;
+
+  batches: ProductBatch[];
+  totalStock: number;
+  availableStock: number;
 }
 
 interface CartItem extends Product {
   quantity: number;
+}
+
+function getEligibleBatches(product: Product) {
+  return product.batches
+    .filter(
+      (batch) =>
+        batch.isActive &&
+        batch.quantity > 0
+    )
+    .sort((a, b) => {
+      const expiryComparison =
+        a.expiryDate.localeCompare(b.expiryDate);
+
+      if (expiryComparison !== 0) return expiryComparison;
+
+      const receivedComparison =
+        new Date(a.receivedAt).getTime() -
+        new Date(b.receivedAt).getTime();
+
+      if (receivedComparison !== 0) return receivedComparison;
+
+      return a.id.localeCompare(b.id);
+    });
+}
+
+function getEstimatedLineTotal(
+  product: Product,
+  requestedQuantity: number
+) {
+  let remaining = requestedQuantity;
+  let lineTotal = 0;
+
+  const batches = getEligibleBatches(product);
+
+  for (const batch of batches) {
+    if (remaining <= 0) break;
+
+    const allocated = Math.min(
+      remaining,
+      batch.quantity
+    );
+
+    lineTotal +=
+      Number(batch.sellingPrice) * allocated;
+
+    remaining -= allocated;
+  }
+
+  if (remaining > 0) {
+    return null;
+  }
+
+  return lineTotal;
+}
+
+function getNextBatchPrice(product: Product) {
+  const batch = getEligibleBatches(product)[0];
+
+  return batch ? Number(batch.sellingPrice) : null;
 }
 
 export default function NewSalePage() {
@@ -57,6 +131,8 @@ export default function NewSalePage() {
   const [stayOnPage, setStayOnPage] = useState(false);
   const [saleSuccess, setSaleSuccess] = useState("");
 
+  const [productError, setProductError] = useState("");
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   function handleStayOnPageChange(checked: boolean) {
@@ -76,6 +152,8 @@ export default function NewSalePage() {
     async (targetPage: number, query: string, append = false) => {
       // Cancel any previous request
       abortControllerRef.current?.abort();
+
+      setProductError("");
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -120,7 +198,11 @@ export default function NewSalePage() {
           return;
         }
 
-
+        setProductError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load products."
+        );
       } finally {
         if (!controller.signal.aborted) {
           setLoadingProducts(false);
@@ -142,9 +224,6 @@ export default function NewSalePage() {
   // Search only when submitted
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (search.trim() === "") return;
-
-
     fetchProducts(1, search.trim(), false);
   };
 
@@ -157,11 +236,14 @@ export default function NewSalePage() {
 
   const subtotal = useMemo(
     () =>
-      cart.reduce(
-        (sum, item) =>
-          sum + Number(item.sellingPrice) * item.quantity,
-        0
-      ),
+      cart.reduce((sum, item) => {
+        const lineTotal = getEstimatedLineTotal(
+          item,
+          item.quantity
+        );
+
+        return sum + (lineTotal ?? 0);
+      }, 0),
     [cart]
   );
 
@@ -178,8 +260,22 @@ export default function NewSalePage() {
   }
 
   function addProduct(product: Product) {
+    setError("");
+    setSaleSuccess("");
+
     setCart((current) => {
-      const existing = current.find((item) => item.id === product.id);
+      const existing = current.find(
+        (item) => item.id === product.id
+      );
+
+      const currentQuantity = existing?.quantity || 0;
+
+      if (currentQuantity >= product.availableStock) {
+        setError(
+          `Only ${product.availableStock} units of ${product.name} are currently available.`
+        );
+        return current;
+      }
 
       if (existing) {
         return current.map((item) =>
@@ -196,11 +292,24 @@ export default function NewSalePage() {
   function changeQuantity(id: string, amount: number) {
     setCart((current) =>
       current
-        .map((item) =>
-          item.id === id
-            ? { ...item, quantity: item.quantity + amount }
-            : item
-        )
+        .map((item) => {
+          if (item.id !== id) return item;
+
+          const nextQuantity = item.quantity + amount;
+
+          if (nextQuantity > item.availableStock) {
+            setError(
+              `Only ${item.availableStock} units of ${item.name} are available.`
+            );
+
+            return item;
+          }
+
+          return {
+            ...item,
+            quantity: nextQuantity,
+          };
+        })
         .filter((item) => item.quantity > 0)
     );
   }
@@ -259,6 +368,8 @@ export default function NewSalePage() {
         setCustomerPhone("");
         setDiscount("0");
         setCartOpen(false);
+
+        fetchProducts(1, "");
 
         setSaleSuccess(
           `Sale ${data.sale.invoiceNumber} completed successfully.`
@@ -358,12 +469,12 @@ export default function NewSalePage() {
 
                 <div className="text-right">
                   <p className="text-[10px] text-gray-400">
-                    {formatNPR(item.sellingPrice)} each
+                    Batch-based pricing
                   </p>
 
                   <p className="font-bold text-sm text-gray-900">
                     {formatNPR(
-                      Number(item.sellingPrice) * item.quantity
+                      getEstimatedLineTotal(item, item.quantity) ?? 0
                     )}
                   </p>
                 </div>
@@ -544,6 +655,12 @@ export default function NewSalePage() {
 
         </div>
 
+        {productError && (
+          <div className="my-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {productError}
+          </div>
+        )}
+
         {/* MAIN LAYOUT */}
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_370px] 2xl:grid-cols-[minmax(0,1fr)_400px] gap-4 sm:gap-6 items-start">
 
@@ -617,13 +734,20 @@ export default function NewSalePage() {
 
                   {products.map((product) => {
                     const quantity = getQuantity(product.id);
+                    const remainingStock = Math.max(
+                      0,
+                      product.availableStock - quantity
+                    );
+                    const nextBatchPrice = getNextBatchPrice(product);
+                    const outOfStock = remainingStock <= 0;
 
                     return (
                       <button
                         type="button"
                         key={product.id}
+                        disabled={outOfStock}
                         onClick={() => addProduct(product)}
-                        className={`relative text-left border rounded-xl p-2.5 sm:p-3 transition active:scale-[0.98] ${quantity > 0
+                        className={`relative text-left border rounded-xl p-2.5 sm:p-3 transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${quantity > 0
                           ? "border-teal-300 bg-teal-50/50"
                           : "border-gray-200 bg-white hover:border-teal-300 hover:bg-teal-50/30"
                           }`}
@@ -657,7 +781,14 @@ export default function NewSalePage() {
                             </p>
 
                             <p className="text-xs sm:text-sm font-bold text-teal-700 mt-1">
-                              {formatNPR(product.sellingPrice)}
+                              {nextBatchPrice !== null
+                                ? formatNPR(nextBatchPrice)
+                                : "Unavailable"}
+                            </p>
+                            <p className="text-[10px] text-gray-500 mt-1">
+                              {outOfStock
+                                ? "Out of stock"
+                                : `${remainingStock} available`}
                             </p>
                           </div>
 
@@ -737,47 +868,93 @@ export default function NewSalePage() {
       </div>
 
       {/* MOBILE + TABLET FIXED BILL BAR */}
+
       {cart.length > 0 && (
-        <div className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.07)] px-3 py-3 sm:px-6 sm:py-4">
+        <div
+          className="
+      xl:hidden
+      fixed inset-x-0 bottom-0 z-40
+      bg-white
+      border-t border-gray-100
+      shadow-[0_-6px_25px_rgba(15,23,42,0.09)]
+      px-4 pt-3
+      pb-[calc(12px+env(safe-area-inset-bottom))]
+    "
+        >
+          {/* Drawer handle */}
+          <div className="flex justify-center mb-3">
+            <div className="w-9 h-1 rounded-full bg-gray-300" />
+          </div>
 
           <div className="max-w-3xl mx-auto flex items-center gap-3">
 
+            {/* Cart summary */}
             <button
+              type="button"
               onClick={() => setCartOpen(true)}
-              className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              className="
+          flex items-center gap-3
+          flex-1 min-w-0
+          text-left rounded-xl
+          active:opacity-70 transition
+        "
             >
-              <div className="relative w-11 h-11 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
-                <ShoppingCart size={21} className="text-teal-700" />
+              <div className="relative w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center shrink-0">
+                <ShoppingCart
+                  size={21}
+                  strokeWidth={2}
+                  className="text-teal-700"
+                />
 
-                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-teal-700 text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="
+            absolute -top-1.5 -right-1.5
+            min-w-5 h-5 px-1
+            rounded-full bg-teal-700
+            border-2 border-white
+            text-white text-[10px] font-bold
+            flex items-center justify-center
+          ">
                   {cart.length}
                 </span>
               </div>
 
               <div className="min-w-0">
-                <p className="text-xs text-gray-500">
-                  Current bill · {totalQuantity} items
+                <p className="text-[11px] font-medium text-gray-500">
+                  Current bill · {totalQuantity} units
                 </p>
 
-                <p className="text-base sm:text-lg font-extrabold text-gray-900 truncate">
+                <p className="text-lg font-extrabold text-gray-900 tracking-tight truncate mt-0.5">
                   {formatNPR(total)}
                 </p>
               </div>
-
             </button>
 
+            {/* View bill button */}
             <button
+              type="button"
               onClick={() => setCartOpen(true)}
-              className="flex items-center justify-center gap-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white px-5 py-3.5 font-bold text-sm shrink-0 active:scale-[0.98] transition"
+              className="
+          flex items-center justify-center gap-2
+          min-h-12
+          rounded-xl
+          bg-teal-700 hover:bg-teal-800
+          active:scale-[0.97]
+          text-white
+          px-5 py-3
+          font-semibold text-sm
+          shadow-sm shadow-teal-700/20
+          shrink-0
+          transition-all duration-150
+        "
             >
-              View bill
-              <ChevronRight size={17} />
+              <span>View bill</span>
+              <ChevronRight size={17} strokeWidth={2.5} />
             </button>
 
           </div>
-
         </div>
       )}
+
 
       {/* MOBILE + TABLET CART DRAWER */}
 

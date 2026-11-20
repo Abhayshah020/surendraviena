@@ -22,6 +22,20 @@
       "when": 1794493721616,
       "tag": "0002_faulty_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795181777869,
+      "tag": "0003_supreme_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795182909943,
+      "tag": "0004_wooden_freak",
+      "breakpoints": true
     }
   ]
 }

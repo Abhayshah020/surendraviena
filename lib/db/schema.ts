@@ -1,9 +1,12 @@
 
 import {
   boolean,
+  check,
+  date,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -11,10 +14,6 @@ import {
   uniqueIndex,
   uuid,
   varchar
-} from "drizzle-orm/pg-core";
-import {
-  check,
-  numeric,
 } from "drizzle-orm/pg-core";
 
 import { sql } from "drizzle-orm";
@@ -265,18 +264,6 @@ export const products = pgTable(
 
     imageKey: text("image_key"),
 
-    // Purchase cost (optional)
-    costPrice: numeric("cost_price", {
-      precision: 12,
-      scale: 2,
-    }),
-
-    // Current selling price
-    sellingPrice: numeric("selling_price", {
-      precision: 12,
-      scale: 2,
-    }).notNull(),
-
     isActive: boolean("is_active")
       .notNull()
       .default(true),
@@ -296,15 +283,105 @@ export const products = pgTable(
   (table) => [
     index("products_name_idx").on(table.name),
     index("products_active_idx").on(table.isActive),
+  ]
+);
+
+// ========================================
+// PHARMACY PRODUCT BATCHES
+// ========================================
+
+export const productBatches = pgTable(
+  "product_batches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, {
+        onDelete: "restrict",
+      }),
+
+    // Manufacturer's batch / lot number
+    batchNumber: varchar("batch_number", {
+      length: 100,
+    }).notNull(),
+
+    // Batch-specific pricing
+    costPrice: numeric("cost_price", {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+
+    sellingPrice: numeric("selling_price", {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+
+    // Stock available in this particular batch
+    quantity: integer("quantity")
+      .notNull()
+      .default(0),
+
+    // Batch expiry date
+    expiryDate: date("expiry_date")
+      .notNull(),
+
+    // Batch arrival / entry date
+    receivedAt: timestamp("received_at", {
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+
+    isActive: boolean("is_active")
+      .notNull()
+      .default(true),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("product_batches_product_id_idx").on(
+      table.productId
+    ),
+
+    index("product_batches_expiry_date_idx").on(
+      table.expiryDate
+    ),
+
+    index("product_batches_active_idx").on(
+      table.isActive
+    ),
+
+    unique(
+      "product_batches_product_batch_unique"
+    ).on(
+      table.productId,
+      table.batchNumber
+    ),
 
     check(
-      "products_selling_price_check",
+      "product_batches_cost_price_check",
+      sql`${table.costPrice} >= 0`
+    ),
+
+    check(
+      "product_batches_selling_price_check",
       sql`${table.sellingPrice} >= 0`
     ),
 
     check(
-      "products_cost_price_check",
-      sql`${table.costPrice} IS NULL OR ${table.costPrice} >= 0`
+      "product_batches_quantity_check",
+      sql`${table.quantity} >= 0`
     ),
   ]
 );
@@ -452,6 +529,12 @@ export const saleItems = pgTable(
       scale: 2,
     }),
 
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => productBatches.id, {
+        onDelete: "restrict",
+      }),
+
     // quantity * unitPrice
     lineTotal: numeric("line_total", {
       precision: 12,
@@ -475,7 +558,7 @@ export const saleItems = pgTable(
   (table) => [
     index("sale_items_sale_id_idx").on(table.saleId),
     index("sale_items_product_id_idx").on(table.productId),
-
+    index("sale_items_batch_id_idx").on(table.batchId),
     check(
       "sale_items_quantity_check",
       sql`${table.quantity} > 0`
@@ -497,3 +580,4 @@ export const saleItems = pgTable(
     ),
   ]
 );
+

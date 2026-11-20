@@ -38,6 +38,8 @@ interface Sale {
 interface Item {
   id: string;
   productName: string;
+  batchId: string | null;
+  batchNumber: string | null;
   quantity: number;
   unitPrice: string;
   unitCost: string | null;
@@ -56,9 +58,7 @@ export default function InvoicePage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [actionLoading, setActionLoading] = useState<
-    "void" | "delete" | null
-  >(null);
+  const [actionLoading, setActionLoading] = useState<"void" | "delete" | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const loadInvoice = useCallback(async () => {
@@ -98,22 +98,20 @@ export default function InvoicePage() {
     });
   };
 
-  async function voidOrCompleteSale({ status }: { status: "VOID" | "COMPLETED" }) {
+  async function voidSale() {
+    if (!sale || sale.status !== "COMPLETED") return;
+
     const confirmed = await confirm(
-      `Are you sure you want to ${status === "COMPLETED" ? "void" : "compelte"} this invoice?`,
+      `Are you sure you want to void invoice ${sale.invoiceNumber}? The quantities will be returned to their original batches. This action cannot be undone.`,
       {
-        title: `${status === "COMPLETED" ? "Void" : "Complete"} This Invoice`,
-        confirmText: `${status === "COMPLETED" ? "Void" : "Complete"}`,
+        title: "Void This Invoice",
+        confirmText: "Void Sale",
         cancelText: "Cancel",
         variant: "danger",
       }
     );
 
-    if (
-      !confirmed
-    ) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
       setActionLoading("void");
@@ -123,7 +121,7 @@ export default function InvoicePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ action: status === "VOID" ? "COMPLETED" : "VOID" }),
+        body: JSON.stringify({ action: "VOID" }),
       });
 
       const data = await response.json();
@@ -142,40 +140,40 @@ export default function InvoicePage() {
     }
   }
 
-  async function deleteSale() {
-    const confirmed = await confirm(
-      '',
-      {
-        title: `Permanently Delete Invoice ${sale?.invoiceNumber}?`,
-        confirmText: "DELETE",
-        cancelText: "Cancel",
-        variant: "danger",
-      }
-    );
+  // async function deleteSale() {
+  //   const confirmed = await confirm(
+  //     `Permanently Delete "${sale?.invoiceNumber}"? This action cannot be undone.`,
+  //     {
+  //       title: `Permanently Delete Invoice ${sale?.invoiceNumber}?`,
+  //       confirmText: "DELETE",
+  //       cancelText: "Cancel",
+  //       variant: "danger",
+  //     }
+  //   );
 
-    if (!confirmed) return;
+  //   if (!confirmed) return;
 
-    try {
-      setActionLoading("delete");
+  //   try {
+  //     setActionLoading("delete");
 
-      const response = await fetch(`/api/admin/sales/${params.id}`, {
-        method: "DELETE",
-      });
+  //     const response = await fetch(`/api/admin/sales/${params.id}`, {
+  //       method: "DELETE",
+  //     });
 
-      const data = await response.json();
+  //     const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.message || "Unable to delete sale.");
-      }
+  //     if (!response.ok) {
+  //       throw new Error(data.message || "Unable to delete sale.");
+  //     }
 
-      router.replace("/admin/sales");
-    } catch (err) {
-      window.alert(
-        err instanceof Error ? err.message : "Unable to delete sale."
-      );
-      setActionLoading(null);
-    }
-  }
+  //     router.replace("/admin/sales");
+  //   } catch (err) {
+  //     window.alert(
+  //       err instanceof Error ? err.message : "Unable to delete sale."
+  //     );
+  //     setActionLoading(null);
+  //   }
+  // }
 
   async function downloadInvoicePdf(sale: Sale, items: Item[]) {
     try {
@@ -276,13 +274,16 @@ export default function InvoicePage() {
         margin: { left: margin, right: margin },
         head: [[
           "Product",
+          "Batch",
           "Qty",
           "Unit Price",
           "Discount",
           "Total",
         ]],
+
         body: items.map((item) => [
           item.productName,
+          item.batchNumber || "-",
           String(item.quantity),
           money(item.unitPrice),
           money(item.lineDiscount),
@@ -307,10 +308,11 @@ export default function InvoicePage() {
         },
         columnStyles: {
           0: { cellWidth: "auto" },
-          1: { halign: "center", cellWidth: 15 },
-          2: { halign: "right", cellWidth: 30 },
-          3: { halign: "right", cellWidth: 27 },
-          4: { halign: "right", cellWidth: 30 },
+          1: { cellWidth: 25 },
+          2: { halign: "center", cellWidth: 13 },
+          3: { halign: "right", cellWidth: 29 },
+          4: { halign: "right", cellWidth: 25 },
+          5: { halign: "right", cellWidth: 29 },
         },
       });
 
@@ -453,7 +455,7 @@ export default function InvoicePage() {
       <div className="max-w-5xl mx-auto space-y-4 sm:space-y-5">
 
         {/* HEADER */}
-        <header className="flex items-center justify-between gap-3 print:hidden">
+        <header className="flex items-center justify-between gap-3 print:hidden hidden sm:block">
 
           <button
             onClick={() => router.push("/admin/sales")}
@@ -463,7 +465,7 @@ export default function InvoicePage() {
             <span>Sales</span>
           </button>
 
-          <span className="text-xs text-gray-400 hidden sm:block">
+          <span className="text-xs text-gray-400">
             Sales / Invoice details
           </span>
 
@@ -500,7 +502,7 @@ export default function InvoicePage() {
               type="button"
               onClick={() => downloadInvoicePdf(sale, items)}
               disabled={isBusy || downloadingPdf}
-              className="flex items-center justify-center gap-2 rounded-lg bg-teal-700 text-white px-3 py-2.5 text-xs sm:text-sm font-semibold hover:bg-teal-800 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-lg bg-teal-700 text-white px-3 py-2.5 text-xs sm:text-sm font-semibold hover:bg-teal-800 disabled:opacity-50 col-span-2 sm:col-span-1"
             >
               {downloadingPdf ? (
                 <Loader2 size={16} className="animate-spin" />
@@ -510,22 +512,24 @@ export default function InvoicePage() {
 
               {downloadingPdf ? "Generating PDF..." : "Download PDF"}
             </button>
-            {/* {sale.status === "COMPLETED" && ( */}
-            <button
-              onClick={() => voidOrCompleteSale({ status: sale.status })}
-              disabled={isBusy}
-              className="flex items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 text-orange-700 px-3 py-2.5 text-xs sm:text-sm font-semibold hover:bg-orange-100 disabled:opacity-50"
-            >
-              {actionLoading === "void" ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Ban size={16} />
-              )}
-              {sale.status === "COMPLETED" ? "Void sale" : "Revert Void"}
-            </button>
-            {/* )} */}
+            {sale.status === "COMPLETED" && (
+              <button
+                type="button"
+                onClick={voidSale}
+                disabled={isBusy || downloadingPdf}
+                className="flex items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 text-orange-700 px-3 py-2.5 text-xs sm:text-sm font-semibold hover:bg-orange-100 disabled:opacity-50 col-span-2 sm:col-span-1"
+              >
+                {actionLoading === "void" ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Ban size={16} />
+                )}
 
-            <button
+                {actionLoading === "void" ? "Voiding sale..." : "Void sale"}
+              </button>
+            )}
+
+            {/* <button
               onClick={deleteSale}
               disabled={isBusy}
               className="flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2.5 text-xs sm:text-sm font-semibold hover:bg-red-100 disabled:opacity-50 col-span-2 sm:col-span-1"
@@ -536,7 +540,7 @@ export default function InvoicePage() {
                 <Trash2 size={16} />
               )}
               Delete permanently
-            </button>
+            </button> */}
 
           </div>
         </section>
@@ -643,7 +647,7 @@ export default function InvoicePage() {
             </div>
 
             <span className="text-xs text-gray-400">
-              {items.length} items
+              {items.reduce((sum, item) => sum + item.quantity, 0)} units · {items.length} batch lines
             </span>
           </div>
 
@@ -659,9 +663,17 @@ export default function InvoicePage() {
                       {index + 1}.
                     </span>
 
-                    <p className="text-sm font-semibold text-gray-800 break-words">
-                      {item.productName}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 break-words">
+                        {item.productName}
+                      </p>
+
+                      {item.batchNumber && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          Batch: {item.batchNumber}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <p className="text-sm font-bold text-gray-900 shrink-0">
@@ -703,6 +715,7 @@ export default function InvoicePage() {
               <thead>
                 <tr className="text-left text-gray-400 text-xs border-b border-gray-100">
                   <th className="py-3 font-semibold">Product</th>
+                  <th className="py-3 font-semibold">Batch</th>
                   <th className="py-3 text-center font-semibold">Qty</th>
                   <th className="py-3 text-right font-semibold">Unit price</th>
                   <th className="py-3 text-right font-semibold">Discount</th>
@@ -713,9 +726,12 @@ export default function InvoicePage() {
               <tbody className="divide-y divide-gray-50">
                 {items.map((item) => (
                   <tr key={item.id}>
-
                     <td className="py-3.5 font-medium text-gray-800">
                       {item.productName}
+                    </td>
+
+                    <td className="py-3.5 text-xs text-gray-500 whitespace-nowrap">
+                      {item.batchNumber || "—"}
                     </td>
 
                     <td className="py-3.5 text-center text-gray-600">
@@ -732,11 +748,9 @@ export default function InvoicePage() {
 
                     <td className="py-3.5 text-right font-semibold text-gray-900 whitespace-nowrap">
                       {formatNPR(
-                        Number(item.lineTotal) -
-                        Number(item.lineDiscount)
+                        Number(item.lineTotal) - Number(item.lineDiscount)
                       )}
                     </td>
-
                   </tr>
                 ))}
               </tbody>

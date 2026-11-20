@@ -8,39 +8,63 @@ import {
 } from "react";
 
 import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Filter,
+  Loader2,
+  Package,
+  Pencil,
   Plus,
+  Power,
+  RefreshCw,
+  RotateCcw,
   Search,
   SlidersHorizontal,
-  Package,
-  Loader2,
-  X,
-  Pencil,
-  Power,
-  RotateCcw,
-  ChevronRight,
-  IndianRupee,
-  Image as ImageIcon,
-  CheckCircle2,
-  AlertCircle,
-  Filter,
-  RefreshCw,
   Trash2,
+  X
 } from "lucide-react";
 
-import { formatNPR } from "../../../../lib/utils/currency";
-import ProductForm from "../../../../components/products/product-form";
 import { useAppDialog } from "../../../../components/app-dialog";
+import ProductForm from "../../../../components/products/product-form";
+import { formatNPR } from "../../../../lib/utils/currency";
+
+export interface ProductBatch {
+  id: string;
+  productId: string;
+  batchNumber: string;
+  costPrice: string;
+  sellingPrice: string;
+  quantity: number;
+  expiryDate: string;
+  receivedAt: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Product {
   id: string;
   name: string;
   imageUrl: string | null;
-  imageKey?: string | null;
-  costPrice: string | null;
-  sellingPrice: string;
+  imageKey: string | null;
   isActive: boolean;
-}
 
+  batches: ProductBatch[];
+
+  totalStock: number;
+  availableStock: number;
+
+  sellingPrice: string | null;
+  lowestSellingPrice: number | null;
+  highestSellingPrice: number | null;
+  earliestExpiry: string | null;
+
+  createdAt: string;
+  updatedAt: string;
+}
 type ProductStatus = "all" | "active" | "inactive";
 
 const LIMIT = 10;
@@ -78,7 +102,7 @@ export default function ProductsPage() {
 
   async function hardDeleteProduct(product: Product) {
     const confirmed = await confirm(
-      `Permanently delete "${product.name}"?\n\nThis action cannot be undone.`,
+      `Permanently Delete "${product.name}"? This action cannot be undone.`,
       {
         title: "Delete Product Permanently?",
         confirmText: "Delete Product",
@@ -250,11 +274,30 @@ export default function ProductsPage() {
     setFormOpen(true);
   }
 
-  function closeForm(product: Product) {
+  function closeForm(savedProduct: Product) {
     setFormOpen(false);
     setEditing(null);
-    setSelected(product)
-    fetchProducts(1, false);
+    setProducts((currentProducts) => {
+      const existingIndex = currentProducts.findIndex(
+        (product) => product.id === savedProduct.id
+      );
+
+      if (existingIndex === -1) {
+        return [savedProduct, ...currentProducts];
+      }
+
+      return currentProducts.map((product) =>
+        product.id === savedProduct.id
+          ? savedProduct
+          : product
+      );
+    });
+
+    setSelected((current) =>
+      current?.id === savedProduct.id
+        ? savedProduct
+        : current
+    );
   }
 
   function openDetails(product: Product) {
@@ -268,12 +311,12 @@ export default function ProductsPage() {
   ) {
     const isDeactivating = action === "deactivate";
     const confirmed = await confirm(
-      '',
+      `Are you sure you want to ${isDeactivating ? 'deactivate' : 'reactivate'}`,
       {
-        title: `Deactivate "${product.name}"?`,
-        confirmText: "Deactivate",
+        title: `${isDeactivating ? 'Deactivate' : 'Reactivate'} "${product.name}"?`,
+        confirmText: `${isDeactivating ? 'Deactivate' : 'Reactivate'}`,
         cancelText: "Cancel",
-        variant: "danger",
+        variant: `${isDeactivating ?"danger": "primary"}`,
       }
     );
     if (
@@ -475,78 +518,160 @@ export default function ProductsPage() {
             {/* Product cards */}
             <div className="bg-white border border-gray-200 sm:rounded-2xl overflow-hidden shadow-sm">
 
-              {products.map((product) => (
+              {products.map((product) => {
+                const batches = product.batches ?? [];
 
-                <button
-                  key={product.id}
-                  onClick={() => openDetails(product)}
-                  className="group w-full min-w-0 text-left bg-white border border-gray-200/90 p-3 sm:p-4 shadow-[0_2px_10px_rgba(0,0,0,0.025)] hover:border-teal-200 hover:shadow-md active:scale-[0.99] transition"
-                >
+                const activeBatches = batches.filter(
+                  (batch) =>
+                    batch.isActive &&
+                    batch.quantity > 0 &&
+                    batch.expiryDate >=
+                    new Date().toLocaleDateString("en-CA", {
+                      timeZone: "Asia/Kathmandu",
+                    })
+                );
 
-                  <div className="flex items-center gap-3">
+                const nearestExpiry = activeBatches
+                  .map((batch) => batch.expiryDate)
+                  .sort()[0];
 
-                    {/* Image */}
-                    <div className="w-[60px] h-[60px] shrink-0 rounded-xl overflow-hidden bg-[#F0F5F3] flex items-center justify-center">
+                const stock = product.availableStock ?? 0;
 
-                      {product.imageUrl ? (
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Package
-                          size={28}
-                          className="text-teal-700/60"
-                        />
-                      )}
+                return (
+                  <button
+                    key={product.id}
+                    onClick={() => openDetails(product)}
+                    className="group w-full min-w-0 text-left bg-white border border-gray-200/90 p-3 pb-0 sm:p-4 hover:border-teal-200 hover:shadow-md active:scale-[0.99] transition"
+                  >
+                    {/* Product identity */}
+                    <div className="flex items-start gap-3">
+                      <div className="w-[64px] h-[64px] shrink-0 rounded-xl overflow-hidden bg-[#F0F5F3] flex items-center justify-center">
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Package
+                            size={28}
+                            className="text-teal-700/60"
+                          />
+                        )}
+                      </div>
 
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2">
+                            {product.name}
+                          </h3>
+
+                          <ChevronDown
+                            size={18}
+                            className="shrink-0 text-gray-400 group-hover:text-teal-700 transition"
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-[10px] font-semibold rounded-full px-2.5 py-1 ${product.isActive
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-gray-100 text-gray-500"
+                              }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${product.isActive
+                                ? "bg-emerald-500"
+                                : "bg-gray-400"
+                                }`}
+                            />
+                            {product.isActive ? "Active" : "Inactive"}
+                          </span>
+
+                          <span className="text-[10px] font-medium text-gray-500 bg-gray-100 rounded-full px-2.5 py-1">
+                            {batches.length} {batches.length === 1 ? "Batch" : "Batches"}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Main information */}
-                    <div className="flex-1 min-w-0">
-
-                      <div className="flex items-start justify-between gap-2">
-
-                        <h3 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2">
-                          {product.name}
-                        </h3>
-
-                        <ChevronRight
-                          size={18}
-                          className="shrink-0 text-gray-400 group-hover:text-teal-700 transition"
-                        />
-
+                    {/* Pricing and expiry */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mt-3 pt-2 border-t border-gray-100">
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-medium">
+                          Available stock
+                        </p>
+                        <p className="text-xs font-bold text-gray-800 mt-0.5">
+                          {stock}
+                          <span className="text-[10px] font-medium ml-1">units</span>
+                        </p>
                       </div>
-                      <div className="mt-2 flex justify-between">
-                        <p className="text-sm font-bold text-teal-800 mt-2">
-                          {formatNPR(product.sellingPrice)}
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-medium">
+                          Selling price
                         </p>
 
-                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold rounded-full px-2.5 py-1 ${product.isActive
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-gray-100 text-gray-500"
-                          }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${product.isActive
-                            ? "bg-emerald-500"
-                            : "bg-gray-400"
-                            }`} />
-
-                          {product.isActive
-                            ? "Active"
-                            : "Inactive"}
-                        </span>
-
+                        <p className="text-xs font-bold text-gray-800 mt-0.5">
+                          {product.lowestSellingPrice != null &&
+                            product.highestSellingPrice != null
+                            ? product.lowestSellingPrice === product.highestSellingPrice
+                              ? `Rs. ${Number(product.lowestSellingPrice).toFixed(2)}`
+                              : `Rs. ${Number(product.lowestSellingPrice).toFixed(2)} - ${Number(product.highestSellingPrice).toFixed(2)}`
+                            : "Not available"}
+                        </p>
                       </div>
 
+                      <div className="text-right">
+                        <p className="text-[10px] text-gray-400 font-medium">
+                          Nearest expiry
+                        </p>
+
+                        <p
+                          className={`text-xs font-bold mt-0.5 ${nearestExpiry
+                            ? new Date(`${nearestExpiry}T00:00:00`) <
+                              new Date(
+                                new Date().toLocaleDateString("en-CA", {
+                                  timeZone: "Asia/Kathmandu",
+                                }) + "T00:00:00"
+                              )
+                              ? "text-red-600"
+                              : "text-gray-800"
+                            : "text-gray-400"
+                            }`}
+                        >
+                          {nearestExpiry
+                            ? new Date(`${nearestExpiry}T00:00:00`).toLocaleDateString(
+                              "en-GB",
+                              {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              }
+                            )
+                            : "N/A"}
+                        </p>
+                      </div>
                     </div>
 
-                  </div>
-
-                </button>
-
-              ))}
-
+                    {/* Inventory warning */}
+                    {product.isActive && (
+                      <div className="mt-3">
+                        {stock <= 0 ? (
+                          <p className="text-[11px] font-semibold text-red-600 flex items-center gap-1.5">
+                            <AlertTriangle size={13} />
+                            No available stock
+                          </p>
+                        ) : stock <= 10 ? (
+                          <p className="text-[11px] font-semibold text-amber-700 flex items-center gap-1.5">
+                            <AlertTriangle size={13} />
+                            Low stock
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Load more */}
@@ -586,7 +711,6 @@ export default function ProductsPage() {
             )}
 
           </>
-
         )}
 
       </section>
@@ -818,82 +942,182 @@ export default function ProductsPage() {
 
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-7">
-
-                  <div className="rounded-2xl bg-teal-50 p-4">
-
-                    <p className="text-xs font-medium text-teal-700">
-                      Selling price
-                    </p>
-
-                    <p className="text-sm font-bold text-teal-900 mt-2">
-                      {formatNPR(selected.sellingPrice)}
-                    </p>
-
-                  </div>
-
-                  <div className="rounded-2xl bg-gray-50 p-4">
-
-                    <p className="text-xs font-medium text-gray-500">
-                      Cost price
-                    </p>
-
-                    <p className="text-sm font-bold text-gray-900 mt-2">
-                      {selected.costPrice
-                        ? formatNPR(selected.costPrice)
-                        : "—"}
-                    </p>
-
-                  </div>
-
-                </div>
-
                 <div className="mt-6 rounded-2xl border border-gray-100 p-4">
-
                   <h4 className="font-bold text-gray-900 mb-4">
                     Product information
                   </h4>
 
                   <div className="flex justify-between gap-3 text-sm py-2">
-                    <span className="text-gray-500">
-                      Product name
-                    </span>
+                    <span className="text-gray-500">Product name</span>
                     <span className="font-semibold text-gray-800 text-right break-all">
                       {selected.name}
                     </span>
                   </div>
 
                   <div className="flex justify-between gap-3 text-sm py-2 border-t border-gray-100">
-                    <span className="text-gray-500">
-                      Selling price
-                    </span>
+                    <span className="text-gray-500">Status</span>
                     <span className="font-semibold text-gray-800">
-                      {formatNPR(selected.sellingPrice)}
+                      {selected.isActive ? "Active" : "Inactive"}
                     </span>
                   </div>
 
                   <div className="flex justify-between gap-3 text-sm py-2 border-t border-gray-100">
-                    <span className="text-gray-500">
-                      Cost price
-                    </span>
-                    <span className="font-semibold text-gray-800">
-                      {selected.costPrice
-                        ? formatNPR(selected.costPrice)
-                        : "Not specified"}
+                    <span className="text-gray-500">Total stock</span>
+                    <span className="font-bold text-gray-900">
+                      {selected.totalStock ?? 0} units
                     </span>
                   </div>
 
                   <div className="flex justify-between gap-3 text-sm py-2 border-t border-gray-100">
-                    <span className="text-gray-500">
-                      Status
+                    <span className="text-gray-500">Available stock</span>
+                    <span className="font-bold text-teal-700">
+                      {selected.availableStock ?? 0} units
                     </span>
-                    <span className="font-semibold text-gray-800">
-                      {selected.isActive
-                        ? "Active"
-                        : "Inactive"}
+                  </div>
+                </div>
+
+                {/* Batch details */}
+                <div className="mt-5 rounded-2xl border border-gray-100 p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-bold text-gray-900">
+                      Batch details
+                    </h4>
+
+                    <span className="text-xs font-semibold bg-teal-50 text-teal-700 px-2.5 py-1 rounded-full">
+                      {selected.batches?.length ?? 0} batches
                     </span>
                   </div>
 
+                  {selected.batches?.length ? (
+                    <div className="space-y-3">
+                      {selected.batches.map((batch, index) => {
+                        const today = new Date().toLocaleDateString("en-CA", {
+                          timeZone: "Asia/Kathmandu",
+                        });
+
+                        const expired = batch.expiryDate < today;
+                        const outOfStock = batch.quantity <= 0;
+
+                        const available =
+                          batch.isActive && !expired && !outOfStock;
+
+                        return (
+                          <div
+                            key={batch.id}
+                            className="rounded-xl border border-gray-200 p-3.5"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs text-gray-400 font-medium">
+                                  Batch {index + 1}
+                                </p>
+
+                                <h5 className="font-bold text-gray-900 break-all mt-0.5">
+                                  {batch.batchNumber}
+                                </h5>
+                              </div>
+
+                              <span
+                                className={`shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full ${available
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : expired
+                                    ? "bg-red-50 text-red-600"
+                                    : outOfStock
+                                      ? "bg-amber-50 text-amber-700"
+                                      : "bg-gray-100 text-gray-500"
+                                  }`}
+                              >
+                                {!batch.isActive
+                                  ? "Inactive"
+                                  : expired
+                                    ? "Expired"
+                                    : outOfStock
+                                      ? "Out of stock"
+                                      : "Available"}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 mt-4">
+                              <div className="rounded-lg bg-gray-50 p-3">
+                                <p className="text-xs text-gray-500">
+                                  Cost price
+                                </p>
+                                <p className="font-bold text-gray-900 mt-1">
+                                  Rs. {Number(batch.costPrice).toFixed(2)}
+                                </p>
+                              </div>
+
+                              <div className="rounded-lg bg-gray-50 p-3">
+                                <p className="text-xs text-gray-500">
+                                  Selling price
+                                </p>
+                                <p className="font-bold text-teal-700 mt-1">
+                                  Rs. {Number(batch.sellingPrice).toFixed(2)}
+                                </p>
+                              </div>
+
+                              <div className="rounded-lg bg-gray-50 p-3">
+                                <p className="text-xs text-gray-500">
+                                  Quantity remaining
+                                </p>
+                                <p className="font-bold text-gray-900 mt-1">
+                                  {batch.quantity} units
+                                </p>
+                              </div>
+
+                              <div className="rounded-lg bg-gray-50 p-3">
+                                <p className="text-xs text-gray-500">
+                                  Expiry date
+                                </p>
+                                <p
+                                  className={`font-bold mt-1 ${expired ? "text-red-600" : "text-gray-900"
+                                    }`}
+                                >
+                                  {new Date(`${batch.expiryDate}T00:00:00`).toLocaleDateString(
+                                    "en-GB",
+                                    {
+                                      day: "2-digit",
+                                      month: "short",
+                                      year: "numeric",
+                                    }
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100 text-xs">
+                              <span className="text-gray-500">
+                                Received
+                              </span>
+                              <span className="font-medium text-gray-700">
+                                {new Date(batch.receivedAt).toLocaleDateString(
+                                  "en-GB",
+                                  {
+                                    day: "2-digit",
+                                    month: "short",
+                                    year: "numeric",
+                                  }
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Package
+                        size={32}
+                        className="mx-auto text-gray-300 mb-2"
+                      />
+                      <p className="text-sm font-semibold text-gray-600">
+                        No batches available
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        This product has not received any stock yet.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
               </div>
@@ -976,50 +1200,56 @@ export default function ProductsPage() {
       </div>
 
       {/* =====================================================
-    SIMPLE ADD PRODUCT BOTTOM DRAWER
-====================================================== */}
+              SIMPLE ADD PRODUCT BOTTOM DRAWER
+          ====================================================== */}
+
 
       <section
         className="
-          sm:hidden
-          fixed
-          z-[80]
-          bottom-0
-          left-0
-          right-0
-          w-full
-          bg-white
-          rounded-t-[28px]
-          shadow-[0_-8px_30px_rgba(0,0,0,0.08)]
-          flex
-          flex-col
-          pb-[env(safe-area-inset-bottom)]
-        "
+    sm:hidden
+    fixed inset-x-0 bottom-0 z-[80]
+    bg-white
+    rounded-t-[24px]
+    border-t border-gray-100
+    shadow-[0_-6px_28px_rgba(15,23,42,0.10)]
+    pb-[env(safe-area-inset-bottom)]
+  "
       >
         {/* Drawer handle */}
-        <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 shrink-0" />
+        <div className="flex justify-center pt-2.5 pb-1">
+          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            Products
-          </h1>
+        <div className="flex items-center justify-between px-5 pt-2 pb-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">
+              Products
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Manage your pharmacy inventory
+            </p>
+          </div>
 
           <button
+            type="button"
             onClick={openCreate}
             className="
-              flex shrink-0 items-center justify-center gap-2
-              rounded-xl bg-teal-700 hover:bg-teal-800
-              active:scale-[0.98]
-              px-4 py-3
-              text-white font-semibold shadow-sm transition
-            "
+        flex shrink-0 items-center justify-center gap-2
+        rounded-xl bg-teal-700 hover:bg-teal-800
+        active:scale-[0.97]
+        px-5 py-2.5
+        text-white text-sm font-semibold
+        shadow-sm shadow-teal-700/20
+        transition-all duration-150
+      "
           >
-            <Plus size={19} />
+            <Plus size={18} strokeWidth={2.5} />
             <span>Add</span>
           </button>
         </div>
       </section>
+
 
       {/* =====================================================
                 CREATE / EDIT BOTTOM DRAWER
@@ -1045,7 +1275,7 @@ export default function ProductsPage() {
                 {editing
                   ? "Edit product"
                   : "Add new product"}
-              </h2> 
+              </h2>
             </div>
 
             <button

@@ -4,6 +4,7 @@
 import {
   CalendarDays,
   ChevronRight,
+  ChevronUp,
   Download,
   Eye,
   Filter,
@@ -24,6 +25,34 @@ import NepaliDateInput from "../../../../components/nepali-date-input";
 import { formatBSDateTimeShort, getTodayAD } from "../../../../lib/date/nepali-date";
 import { formatNPR } from "../../../../lib/utils/currency";
 import { useCalendarPreference } from "../../../../hooks/use-calendar-preference";
+
+type ProductOption = {
+  id: string;
+  name: string;
+};
+
+type AnalyticsRange =
+  | "1week"
+  | "1month"
+  | "3months"
+  | "6months"
+  | "12months"
+  | "all";
+
+interface SalesAnalytics {
+  range: AnalyticsRange;
+  summary: {
+    totalSales: number;
+    totalRevenue: number;
+    totalUnitsSold: number;
+  };
+  chart: {
+    period: string;
+    salesCount: number;
+    revenue: number;
+    unitsSold: number;
+  }[];
+}
 
 interface Sale {
   id: string;
@@ -53,6 +82,17 @@ export default function SalesHistoryPage() {
   const [to, setTo] = useState("");
   const [status, setStatus] = useState("ALL");
 
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+
+  // Applied sales-list filter
+  const [productId, setProductId] = useState("ALL");
+
+  // Temporary sales-list filter selection
+  const [filterProductId, setFilterProductId] = useState("ALL");
+
+  // Independent analytics product selection
+  const [analyticsProductId, setAnalyticsProductId] = useState("ALL");
+
   // Temporary filter values for the mobile drawer
   const [filterSearch, setFilterSearch] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
@@ -67,7 +107,105 @@ export default function SalesHistoryPage() {
 
   const [exportingPDF, setExportingPDF] = useState(false);
 
+  const [analyticsRange, setAnalyticsRange] =
+    useState<AnalyticsRange>("1week");
 
+  const [analytics, setAnalytics] =
+    useState<SalesAnalytics | null>(null);
+
+  const [analyticsLoading, setAnalyticsLoading] =
+    useState(false);
+
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+
+
+  const loadProductOptions = async () => {
+    try {
+      const response = await fetch("/api/admin/products", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to load products.");
+      }
+
+      const list = Array.isArray(data)
+        ? data
+        : data.products ?? data.items ?? [];
+
+      setProductOptions(
+        list.map((product: ProductOption) => ({
+          id: product.id,
+          name: product.name,
+        }))
+      );
+    } catch (error) {
+      console.error("Failed to load product options:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadProductOptions();
+  }, []);
+
+  const fetchSalesAnalytics = async (
+    range: AnalyticsRange = analyticsRange,
+    selectedProductId: string = analyticsProductId
+  ) => {
+    try {
+      setAnalyticsLoading(true);
+
+      const params = new URLSearchParams({
+        range,
+      });
+
+      if (selectedProductId !== "ALL") {
+        params.set("productId", selectedProductId);
+      }
+
+      const response = await fetch(
+        `/api/admin/sales/analytics?${params.toString()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Unable to fetch sales analytics."
+        );
+      }
+
+      setAnalytics(data);
+    } catch (error) {
+      console.error("Sales analytics error:", error);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+
+  const changeAnalyticsProduct = (selectedProductId: string) => {
+    setAnalyticsProductId(selectedProductId);
+
+    fetchSalesAnalytics(analyticsRange, selectedProductId);
+  };
+
+
+  useEffect(() => {
+    fetchSalesAnalytics("1week");
+  }, []);
+
+  const changeAnalyticsRange = (range: AnalyticsRange) => {
+    setAnalyticsRange(range);
+    fetchSalesAnalytics(range);
+  };
 
   const activeFilters = useMemo(() => {
     return [
@@ -78,39 +216,57 @@ export default function SalesHistoryPage() {
     ].filter(Boolean).length;
   }, [search, from, to, status]);
 
-  const loadSales = useCallback(async (page = 1, append = false, limit = "10") => {
-    try {
-      setLoading(true);
 
-      const params = new URLSearchParams({
-        page: String(page),
-        limit,
-        search,
-      });
+  const loadSales = useCallback(
+    async (page = 1, append = false, limit = "10") => {
+      try {
+        setLoading(true);
 
-      if (from) params.set("from", from);
-      if (to) params.set("to", to);
-      if (status !== "ALL") params.set("status", status);
+        const params = new URLSearchParams({
+          page: String(page),
+          limit,
+          search,
+        });
 
-      const response = await fetch(`/api/admin/sales?${params}`);
-      const data = await response.json();
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
 
-      if (!response.ok) {
-        throw new Error(data.message || "Unable to fetch sales");
+        if (status !== "ALL") {
+          params.set("status", status);
+        }
+
+        if (productId !== "ALL") {
+          params.set("productId", productId);
+        }
+
+        const response = await fetch(
+          `/api/admin/sales?${params.toString()}`,
+          { cache: "no-store" }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || "Unable to fetch sales.");
+        }
+
+        if (append) {
+          setItems((previous) => [...previous, ...data.sales]);
+        } else {
+          setItems(data.sales);
+        }
+
+        setPage(data.pagination.page);
+        setTotalPages(data.pagination.totalPages);
+      } catch (error) {
+        console.error("Failed to load sales:", error);
+      } finally {
+        setLoading(false);
       }
-      if (append) {
-        setItems((prev) => [...prev, ...data.sales]);
-      } else {
-        setItems(data.sales)
-      }
-      setPage(data.pagination.page)
-      setTotalPages(data.pagination.totalPages);
-    } catch (error) {
-      console.error("Failed to load sales:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, from, to, status]);
+    },
+    [search, from, to, status, productId]
+  );
+
 
 
   const fetchAllSales = async (filters: SalesExportFilters) => {
@@ -466,21 +622,37 @@ export default function SalesHistoryPage() {
     setFilterOpen(true);
   };
 
+
   const applyFilters = () => {
     setSearch(filterSearch);
     setFrom(filterFrom);
     setTo(filterTo);
     setStatus(filterStatus);
+    setProductId(filterProductId);
+
     setPage(1);
     setFilterOpen(false);
   };
+
+
 
   const clearFilters = () => {
     setFilterSearch("");
     setFilterFrom("");
     setFilterTo("");
     setFilterStatus("ALL");
+    setFilterProductId("ALL");
+
+    setSearch("");
+    setFrom("");
+    setTo("");
+    setStatus("ALL");
+    setProductId("ALL");
+
+    setPage(1);
+    setFilterOpen(false);
   };
+
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleString("en-NP", {
@@ -491,7 +663,7 @@ export default function SalesHistoryPage() {
   };
 
   return (
-    <main className="min-h-[calc(100dvh-70px)] bg-[#F7F9F8] p-3 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
+    <main className="min-h-[calc(100dvh-70px)] bg-[#F7F9F8] p-3 sm:p-6 lg:p-8 pb-28 space-y-5 sm:space-y-6">
 
       {/* MOBILE SEARCH + FILTER */}
       <div className="sm:hidden flex gap-2">
@@ -601,7 +773,37 @@ export default function SalesHistoryPage() {
             </select>
           </div>
 
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1.5 block">
+              Product
+            </label>
+
+            <select
+              value={filterProductId}
+              onChange={(e) => setFilterProductId(e.target.value)}
+              className="
+      w-full border border-gray-200
+      rounded-xl p-3 text-sm bg-white
+      outline-none focus:ring-2 focus:ring-teal-500
+    "
+            >
+              <option value="ALL">All products</option>
+
+              {productOptions.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+
+            <p className="text-[11px] text-gray-400 mt-1">
+              Show transactions containing a specific product.
+            </p>
+          </div>
         </div>
+
+
+
         <div className="flex justify-end pt-2 border-t border-gray-100">
           <button
             type="button"
@@ -720,6 +922,33 @@ export default function SalesHistoryPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1.5 block">
+                  Product
+                </label>
+
+                <select
+                  value={filterProductId}
+                  onChange={(e) => setFilterProductId(e.target.value)}
+                  className="
+      w-full border border-gray-200
+      rounded-xl p-3 text-sm bg-white
+      outline-none focus:ring-2 focus:ring-teal-500
+    "
+                >
+                  <option value="ALL">All products</option>
+
+                  {productOptions.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Show transactions containing a specific product.
+                </p>
+              </div>
             </div>
 
             <button
@@ -1025,6 +1254,348 @@ export default function SalesHistoryPage() {
 
       </section>
 
+      {/* SALES ANALYTICS BOTTOM DRAWER */}
+      <div className="fixed bottom-0 left-0 right-0 z-[90]">
+
+        <section
+          className={`relative bg-white border-t border-gray-200 shadow-[0_-8px_30px_rgba(0,0,0,0.10)] rounded-t-2xl overflow-hidden transition-[height] duration-300 ease-in-out ${analyticsOpen ? "h-[78dvh]" : "h-[82px]"
+            }`}
+        >
+          {/* Drawer handle / summary */}
+          <button
+            type="button"
+            onClick={() => setAnalyticsOpen((previous) => !previous)}
+            className="w-full h-[82px] px-4 flex items-center gap-3 text-left"
+          >
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-300" />
+
+            <div className="flex-1 min-w-0 pt-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                Total revenue · {analyticsRange === "1week" ? "Past 1 week" : analyticsRange}
+              </p>
+
+              <p className="text-lg font-bold text-gray-900 truncate mt-0.5">
+                {analyticsLoading
+                  ? "Loading..."
+                  : formatNPR(analytics?.summary.totalRevenue ?? 0)}
+              </p>
+            </div>
+
+            <div className="text-right shrink-0 pt-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                Completed sales
+              </p>
+
+              <p className="text-lg font-bold text-teal-700 mt-0.5">
+                {analyticsLoading
+                  ? "..."
+                  : analytics?.summary.totalSales ?? 0}
+              </p>
+            </div>
+
+            <div
+              className={`w-9 h-9 shrink-0 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center mt-2 transition-transform duration-300 ${analyticsOpen ? "rotate-180" : ""
+                }`}
+            >
+              <ChevronUp size={20} />
+            </div>
+          </button>
+
+          {/* Expanded analytics content */}
+          <div
+            className={`h-[calc(100%-82px)] overflow-y-auto overscroll-contain px-4 pb-6 transition-opacity duration-200 ${analyticsOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
+          >
+            <div className="flex items-center justify-between gap-3 py-3 border-b border-gray-100">
+              <div>
+                <h3 className="font-bold text-gray-900">
+                  Sales overview
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Revenue and product sales performance
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fetchSalesAnalytics()}
+                disabled={analyticsLoading}
+                className="p-2 rounded-lg bg-gray-100 text-gray-600 disabled:opacity-50"
+                aria-label="Refresh analytics"
+              >
+                <RefreshCw
+                  size={17}
+                  className={analyticsLoading ? "animate-spin" : ""}
+                />
+              </button>
+            </div>
+
+
+            {/* Analytics product selector */}
+            <div className="py-3 border-b border-gray-100">
+              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">
+                Analytics for
+              </label>
+
+              <select
+                value={analyticsProductId}
+                onChange={(e) => changeAnalyticsProduct(e.target.value)}
+                disabled={analyticsLoading}
+                className="
+      w-full border border-gray-200
+      rounded-xl px-3 py-2.5
+      text-sm font-medium text-gray-800
+      bg-white outline-none
+      focus:ring-2 focus:ring-teal-500
+      disabled:opacity-60
+    "
+              >
+                <option value="ALL">All products · Overall sales</option>
+
+                {productOptions.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                {analyticsProductId === "ALL"
+                  ? "Showing overall completed sales performance."
+                  : "Showing revenue and units for the selected product only."}
+              </p>
+            </div>
+
+
+            {/* Date range selector */}
+            <div className="flex gap-2 overflow-x-auto py-3 scrollbar-hide">
+              {(
+                [
+                  ["1week", "1 Week"],
+                  ["1month", "1 Month"],
+                  ["3months", "3 Months"],
+                  ["6months", "6 Months"],
+                  ["12months", "12 Months"],
+                  ["all", "All time"],
+                ] as [AnalyticsRange, string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => changeAnalyticsRange(value)}
+                  className={`shrink-0 px-3.5 py-2 rounded-lg text-xs font-semibold transition ${analyticsRange === value
+                    ? "bg-teal-700 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              <div className="rounded-xl bg-teal-50 p-3">
+                <p className="text-[10px] text-teal-700 font-medium">
+                  Revenue
+                </p>
+                <p className="text-sm sm:text-lg font-bold text-teal-900 mt-1 break-words">
+                  {formatNPR(analytics?.summary.totalRevenue ?? 0)}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-blue-50 p-3">
+                <p className="text-[10px] text-blue-700 font-medium">
+                  Transactions
+                </p>
+                <p className="text-lg font-bold text-blue-900 mt-1">
+                  {analytics?.summary.totalSales ?? 0}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-amber-50 p-3">
+                <p className="text-[10px] text-amber-700 font-medium">
+                  Units sold
+                </p>
+                <p className="text-lg font-bold text-amber-900 mt-1">
+                  {analytics?.summary.totalUnitsSold ?? 0}
+                </p>
+              </div>
+            </div>
+
+            {analyticsLoading && !analytics ? (
+              <div className="py-16 flex flex-col items-center gap-3">
+                <Loader2
+                  size={26}
+                  className="animate-spin text-teal-700"
+                />
+                <p className="text-sm text-gray-500">
+                  Loading sales report...
+                </p>
+              </div>
+            ) : analytics && analytics.chart.length > 0 ? (
+              <div className="space-y-4 mt-4">
+
+                {/* Revenue chart */}
+                <div className="rounded-2xl border border-gray-200 p-3 sm:p-4">
+                  <div className="flex justify-between items-start gap-3 mb-4">
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-sm">
+                        {analyticsProductId === "ALL"
+                          ? "Revenue trend"
+                          : "Product revenue trend"}
+                      </h4>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Revenue by {analyticsRange === "1week" || analyticsRange === "1month"
+                          ? "day"
+                          : analyticsRange === "3months"
+                            ? "week"
+                            : "month"}
+                      </p>
+                    </div>
+
+                    <p className="font-bold text-teal-700 text-sm">
+                      {formatNPR(analytics.summary.totalRevenue)}
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <div
+                      className="flex items-end gap-2 min-w-max h-40 px-1"
+                    >
+                      {analytics.chart.map((point, index) => {
+                        const maxRevenue = Math.max(
+                          ...analytics.chart.map((item) => item.revenue),
+                          1
+                        );
+
+                        const height =
+                          point.revenue > 0
+                            ? Math.max(
+                              5,
+                              (point.revenue / maxRevenue) * 100
+                            )
+                            : 0;
+
+                        return (
+                          <div
+                            key={`${point.period}-${index}`}
+                            className="w-9 h-full flex flex-col justify-end items-center gap-2"
+                          >
+                            <div className="w-full flex-1 flex items-end justify-center">
+                              <div
+                                title={formatNPR(point.revenue)}
+                                className="w-5 rounded-t-md bg-teal-600 transition-all duration-300"
+                                style={{ height: `${height}%` }}
+                              />
+                            </div>
+
+                            <span className="text-[9px] text-gray-400 whitespace-nowrap">
+                              {new Date(point.period).toLocaleDateString(
+                                "en-GB",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                }
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Product sales chart */}
+                <div className="rounded-2xl border border-gray-200 p-3 sm:p-4">
+                  <div className="flex justify-between items-start gap-3 mb-4">
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-sm">
+                        {analyticsProductId === "ALL"
+                          ? "Product sales"
+                          : "Selected product sales"}
+                      </h4>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        {analyticsProductId === "ALL"
+                          ? "Units sold and completed transactions"
+                          : "Units and transactions containing this product"}
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+                      <p className="font-bold text-blue-700 text-sm">
+                        {analytics.summary.totalUnitsSold} units
+                      </p>
+                      <p className="text-[10px] text-gray-400">
+                        {analytics.summary.totalSales} transactions
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <div className="flex items-end gap-2 min-w-max h-40 px-1">
+                      {analytics.chart.map((point, index) => {
+                        const maxUnits = Math.max(
+                          ...analytics.chart.map((item) => item.unitsSold),
+                          1
+                        );
+
+                        const height =
+                          point.unitsSold > 0
+                            ? Math.max(
+                              5,
+                              (point.unitsSold / maxUnits) * 100
+                            )
+                            : 0;
+
+                        return (
+                          <div
+                            key={`${point.period}-${index}`}
+                            className="w-9 h-full flex flex-col justify-end items-center gap-2"
+                          >
+                            <div className="w-full flex-1 flex items-end justify-center">
+                              <div
+                                title={`${point.unitsSold} units sold · ${point.salesCount} transactions`}
+                                className="w-5 rounded-t-md bg-blue-500 transition-all duration-300"
+                                style={{ height: `${height}%` }}
+                              />
+                            </div>
+
+                            <span className="text-[9px] text-gray-400 whitespace-nowrap">
+                              {new Date(point.period).toLocaleDateString(
+                                "en-GB",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                }
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="py-12 text-center">
+                <Receipt
+                  size={30}
+                  className="mx-auto text-gray-300"
+                />
+                <p className="text-sm font-semibold text-gray-600 mt-3">
+                  No sales data available
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  There are no completed sales in this period.
+                </p>
+              </div>
+            )}
+
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

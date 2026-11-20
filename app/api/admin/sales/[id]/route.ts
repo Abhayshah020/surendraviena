@@ -1,11 +1,10 @@
-
-import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { eq, sql } from "drizzle-orm";
+
 import { requireAdmin } from "../../../../../lib/auth/api-guard";
-import { saleItems, sales } from "../../../../../lib/db/schema";
+import { saleItems, sales, productBatches } from "../../../../../lib/db/schema";
 import { db } from "../../../../../lib/db";
 import { transactionDb } from "../../../../../lib/db/transaction";
-
 
 export const runtime = "nodejs";
 
@@ -66,54 +65,94 @@ export async function PATCH(
     const { id } = await context.params;
     const body = await request.json();
 
-    if (body.action === "VOID" || body.action === "COMPLETED") {
-      const result = await transactionDb.transaction(async (tx) => {
-        const [sale] = await tx
-          .select()
-          .from(sales)
-          .where(eq(sales.id, id))
-          .limit(1);
-
-        if (!sale) return "NOT_FOUND";
-
-        if (sale.status === body.action) return "ALREADY_ACTION_DONE";
-
-        const [updated] = await tx
-          .update(sales)
-          .set({
-            status: body.action,
-            updatedAt: new Date(),
-          })
-          .where(eq(sales.id, id))
-          .returning();
-
-        return updated;
-      });
-
-      if (result === "NOT_FOUND") {
-        return NextResponse.json(
-          { message: "Sale not found." },
-          { status: 404 }
-        );
-      }
-
-      if (result === "ALREADY_ACTION_DONE") {
-        return NextResponse.json(
-          { message: "This ation to the sale has already been done." },
-          { status: 409 }
-        );
-      }
-
-      return NextResponse.json({
-        message: `Sale ${body.action} successfully.`,
-        sale: result,
-      });
-    } else {
+    if (body.action !== "VOID") {
       return NextResponse.json(
-        { message: "Unsupported action." },
+        {
+          message:
+            "Only VOID is supported. Completed sales cannot be reactivated.",
+        },
         { status: 400 }
       );
     }
+
+    const result = await transactionDb.transaction(async (tx) => {
+      const [sale] = await tx
+        .select()
+        .from(sales)
+        .where(eq(sales.id, id))
+        .limit(1);
+
+      if (!sale) return "NOT_FOUND";
+
+      if (sale.status === "VOID") return "ALREADY_VOID";
+
+      const items = await tx
+        .select()
+        .from(saleItems)
+        .where(eq(saleItems.saleId, id));
+
+      if (items.some((item) => !item.batchId)) {
+        return "MISSING_BATCH_REFERENCE";
+      }
+
+      // Restore original batch stock.
+      for (const item of items) {
+        const [restoredBatch] = await tx
+          .update(productBatches)
+          .set({
+            quantity: sql`${productBatches.quantity} + ${item.quantity}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(productBatches.id, item.batchId!))
+          .returning({
+            id: productBatches.id,
+          });
+
+        if (!restoredBatch) {
+          throw new Error("BATCH_RESTORE_FAILED");
+        }
+      }
+
+      const [updated] = await tx
+        .update(sales)
+        .set({
+          status: "VOID",
+          updatedAt: new Date(),
+        })
+        .where(eq(sales.id, id))
+        .returning();
+
+      return updated;
+    });
+
+    if (result === "NOT_FOUND") {
+      return NextResponse.json(
+        { message: "Sale not found." },
+        { status: 404 }
+      );
+    }
+
+    if (result === "ALREADY_VOID") {
+      return NextResponse.json(
+        { message: "This sale has already been voided." },
+        { status: 409 }
+      );
+    }
+
+    if (result === "MISSING_BATCH_REFERENCE") {
+      return NextResponse.json(
+        {
+          message:
+            "This historical sale has no batch references and cannot be automatically restored.",
+        },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({
+      message: "Sale voided and batch stock restored successfully.",
+      sale: result,
+    });
   } catch (error) {
     console.error("Sale void error:", error);
 
@@ -132,46 +171,18 @@ export async function DELETE(
     const { response } = await requireAdmin(request);
     if (response) return response;
 
-    const { id } = await context.params;
-
-    const result = await transactionDb.transaction(async (tx) => {
-      const [sale] = await tx
-        .select({ id: sales.id })
-        .from(sales)
-        .where(eq(sales.id, id))
-        .limit(1);
-
-      if (!sale) return false;
-
-      // Delete associated invoice items first.
-      await tx
-        .delete(saleItems)
-        .where(eq(saleItems.saleId, id));
-
-      // Permanently delete the invoice.
-      await tx
-        .delete(sales)
-        .where(eq(sales.id, id));
-
-      return true;
-    });
-
-    if (!result) {
-      return NextResponse.json(
-        { message: "Sale not found." },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      message: "Sale and associated items permanently deleted.",
-    });
-
+    return NextResponse.json(
+      {
+        message:
+          "Sales cannot be permanently deleted. Void the sale instead to preserve inventory and financial history.",
+      },
+      { status: 405 }
+    );
   } catch (error) {
     console.error("Sale deletion error:", error);
 
     return NextResponse.json(
-      { message: "Unable to delete sale." },
+      { message: "Unable to process sale deletion." },
       { status: 500 }
     );
   }

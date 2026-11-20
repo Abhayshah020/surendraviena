@@ -1,15 +1,16 @@
-
-import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+
 import { requireAdmin } from "../../../../../../lib/auth/api-guard";
 import { db } from "../../../../../../lib/db";
-import { products, saleItems } from "../../../../../../lib/db/schema";
+import { products, saleItems, productBatches } from "../../../../../../lib/db/schema";
 import { deleteProductImage } from "../../../../../../lib/r2/storage";
-
 
 interface Context {
     params: Promise<{ id: string }>;
 }
+
+export const runtime = "nodejs";
 
 export async function DELETE(
     request: NextRequest,
@@ -21,7 +22,6 @@ export async function DELETE(
 
         const { id } = await context.params;
 
-        // Find the product and its associated image.
         const [existingProduct] = await db
             .select({
                 id: products.id,
@@ -39,11 +39,8 @@ export async function DELETE(
             );
         }
 
-        // Check whether this product exists in sales history.
         const [existingSale] = await db
-            .select({
-                id: saleItems.id,
-            })
+            .select({ id: saleItems.id })
             .from(saleItems)
             .where(eq(saleItems.productId, id))
             .limit(1);
@@ -53,14 +50,31 @@ export async function DELETE(
                 {
                     code: "PRODUCT_HAS_SALES_HISTORY",
                     message:
-                        "This product cannot be permanently deleted because it is associated with existing sales records. Deactivate it instead to preserve your accounting history.",
+                        "This product has sales history and cannot be permanently deleted. Deactivate it instead.",
                     canDeactivate: true,
                 },
                 { status: 409 }
             );
         }
 
-        // Permanently delete the product.
+        const [existingBatch] = await db
+            .select({ id: productBatches.id })
+            .from(productBatches)
+            .where(eq(productBatches.productId, id))
+            .limit(1);
+
+        if (existingBatch) {
+            return NextResponse.json(
+                {
+                    code: "PRODUCT_HAS_BATCHES",
+                    message:
+                        "This product has batch records and cannot be permanently deleted. Deactivate it instead.",
+                    canDeactivate: true,
+                },
+                { status: 409 }
+            );
+        }
+
         const [deletedProduct] = await db
             .delete(products)
             .where(eq(products.id, id))
@@ -76,7 +90,6 @@ export async function DELETE(
             );
         }
 
-        // Remove its associated R2 image.
         let imageCleanupPending = false;
 
         if (existingProduct.imageKey) {
@@ -94,18 +107,17 @@ export async function DELETE(
 
         return NextResponse.json({
             message: imageCleanupPending
-                ? "Product deleted successfully, but its image cleanup is pending."
+                ? "Product deleted, but image cleanup is pending."
                 : "Product and associated image permanently deleted.",
             product: deletedProduct,
             imageCleanupPending,
         });
-
     } catch (error) {
         console.error("Product HARD DELETE error:", error);
 
         return NextResponse.json(
             {
-                message: "Unable to permanently delete product. Please try again.",
+                message: "Unable to permanently delete product.",
             },
             { status: 500 }
         );

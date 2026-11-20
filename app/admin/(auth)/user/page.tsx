@@ -347,7 +347,7 @@ export default function UserPage() {
 
     async function handleDeleteUser(user: AdminUser) {
         const confirmed = await confirm(
-            `Permanently delete ${user.fullName || user.email}? This action cannot be undone.`,
+            `Permanently Delete ${user.fullName || user.email}? This Action Cannot Be Undone.`,
             {
                 title: "Delete User Permanently?",
                 confirmText: "Delete User",
