@@ -105,6 +105,8 @@ export default function SalesHistoryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
+  const [totalData, setTotalData] = useState(0)
+
   const [exportingPDF, setExportingPDF] = useState(false);
 
   const [analyticsRange, setAnalyticsRange] =
@@ -255,7 +257,7 @@ export default function SalesHistoryPage() {
         } else {
           setItems(data.sales);
         }
-
+        setTotalData(data.pagination.total)
         setPage(data.pagination.page);
         setTotalPages(data.pagination.totalPages);
       } catch (error) {
@@ -663,16 +665,20 @@ export default function SalesHistoryPage() {
   };
 
   return (
-    <main className="min-h-[calc(100dvh-70px)] bg-[#F7F9F8] p-3 sm:p-6 lg:p-8 pb-28 space-y-5 sm:space-y-6">
+    <main className="min-h-[calc(100dvh-70px)] bg-[#F7F9F8] sm:p-6 lg:p-8 pb-28 space-y-5 sm:space-y-6">
 
       {/* MOBILE SEARCH + FILTER */}
-      <div className="sm:hidden flex gap-2">
+      <div className="sm:hidden flex gap-2 px-4 sm:px-6 lg:px-8 py-2" >
 
         <button
           onClick={openFilters}
           className="relative flex-1 flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-3.5 py-3 text-left shadow-sm hover:border-teal-300 transition min-w-0"
         >
-          <Search size={19} className="text-gray-400 shrink-0" />
+
+          <Search
+            size={20}
+            className="text-gray-400 shrink-0"
+          />
 
           <span className="text-sm text-gray-500 truncate">
             {search || "Search and filter sales"}
@@ -684,7 +690,7 @@ export default function SalesHistoryPage() {
           />
 
           {activeFilters > 0 && (
-            <span className="absolute -top-2 -right-2 flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-teal-700 text-white text-xs font-bold">
+            <span className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 rounded-full bg-teal-700 text-white text-xs font-bold">
               {activeFilters}
             </span>
           )}
@@ -997,261 +1003,266 @@ export default function SalesHistoryPage() {
         </div>
       </div>
 
+      <p className="text-xs text-gray-500 mt-1 px-4 sm:px-6 lg:px-8">
+        Inventory {loading
+          ? "Loading products..."
+          : `${items.length} of ${totalData} products`}
+      </p>
       {/* SALES RESULTS */}
-      <section className="bg-white border border-gray-200 sm:rounded-2xl overflow-hidden shadow-sm">
-
-        {loading ? (
-          <div className="p-16 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="animate-spin text-teal-700" size={27} />
-            <p className="text-sm text-gray-500">Loading sales...</p>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="border border-gray-200 bg-white py-16 px-10 text-center">
-
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-teal-50 flex items-center justify-center">
-              <Receipt
-                size={30}
-                className="text-teal-700"
-              />
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-white border border-gray-200 sm:rounded-2xl overflow-hidden shadow-sm">
+          {loading ? (
+            <div className="p-16 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="animate-spin text-teal-700" size={27} />
+              <p className="text-sm text-gray-500">Loading sales...</p>
             </div>
+          ) : items.length === 0 ? (
+            <div className="border border-gray-200 bg-white py-16 px-10 text-center">
 
-            <h3 className="font-bold text-gray-900 mt-5">
-              No sales found
-            </h3>
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-teal-50 flex items-center justify-center">
+                <Receipt
+                  size={30}
+                  className="text-teal-700"
+                />
+              </div>
 
-            <p className="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
-              Try changing your search filters or add a new pharmacy product.
-            </p>
+              <h3 className="font-bold text-gray-900 mt-5">
+                No sales found
+              </h3>
 
-            <button
-              onClick={clearFilters}
-              className="mt-5 rounded-xl bg-teal-700 px-5 py-3 text-white font-semibold text-sm"
-            >
-              Clear filters
-            </button>
+              <p className="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
+                Try changing your search filters or add a new pharmacy product.
+              </p>
 
-          </div>
-        ) : (
-          <>
-            {/* MOBILE CARD VIEW */}
-            <div className="sm:hidden divide-y divide-gray-100">
+              <button
+                onClick={clearFilters}
+                className="mt-5 rounded-xl bg-teal-700 px-5 py-3 text-white font-semibold text-sm"
+              >
+                Clear filters
+              </button>
 
-              {items.map((sale) => (
-                <Link
-                  key={sale.id}
-                  href={`/admin/sales/${sale.id}`}
-                  className="block p-3 active:bg-gray-50 transition"
-                >
+            </div>
+          ) : (
+            <>
+              {/* MOBILE CARD VIEW */}
+              <div className="sm:hidden divide-y divide-gray-100">
 
-                  <div className="flex items-start justify-between gap-3">
+                {items.map((sale) => (
+                  <Link
+                    key={sale.id}
+                    href={`/admin/sales/${sale.id}`}
+                    className="block p-3 active:bg-gray-50 transition"
+                  >
 
-                    <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+
+                      <div className="min-w-0 flex-1">
 
 
-                      <div className="flex items-center gap-1.5 text-gray-900">
-                        <UserRound
-                          size={14}
-                          className="text-gray-400 shrink-0"
+                        <div className="flex items-center gap-1.5 text-gray-900">
+                          <UserRound
+                            size={14}
+                            className="text-gray-400 shrink-0"
+                          />
+
+                          <span className="text-sm font-semibold truncate">
+                            {sale.customerName}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-1.5 text-gray-500"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleCalendar();
+                          }}
+                        >
+                          <CalendarDays size={13} className="shrink-0" />
+                          <span className="text-xs">
+                            {useBS ? formatBSDateTimeShort(sale.soldAt) : formatDate(sale.soldAt)}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 ${sale.status === "COMPLETED"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-700"
+                              }`}
+                          >
+                            {sale.status === "COMPLETED" ? "Completed" : "Voided"}
+                          </span>
+                        </div>
+
+                      </div>
+
+                      <div className="text-right shrink-0 flex flex-col items-end">
+                        <span className="text-sm font-bold text-gray-900 mt-1">
+                          {formatNPR(sale.totalAmount)}
+                        </span>
+
+                        <ChevronRight
+                          size={17}
+                          className="text-gray-400 mt-1"
                         />
-
-                        <span className="text-sm font-semibold truncate">
-                          {sale.customerName}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-1.5 text-gray-500"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          toggleCalendar();
-                        }}
-                      >
-                        <CalendarDays size={13} className="shrink-0" />
-                        <span className="text-xs">
-                          {useBS ? formatBSDateTimeShort(sale.soldAt) : formatDate(sale.soldAt)}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 ${sale.status === "COMPLETED"
-                            ? "bg-green-50 text-green-700"
-                            : "bg-red-50 text-red-700"
-                            }`}
-                        >
-                          {sale.status === "COMPLETED" ? "Completed" : "Voided"}
-                        </span>
                       </div>
 
                     </div>
 
-                    <div className="text-right shrink-0 flex flex-col items-end">
-                      <span className="text-sm font-bold text-gray-900 mt-1">
-                        {formatNPR(sale.totalAmount)}
-                      </span>
+                  </Link>
+                ))}
 
-                      <ChevronRight
-                        size={17}
-                        className="text-gray-400 mt-1"
-                      />
-                    </div>
+              </div>
 
-                  </div>
+              {/* TABLET + DESKTOP TABLE VIEW */}
+              <div className="hidden sm:block overflow-x-auto">
 
-                </Link>
-              ))}
+                <table className="w-full text-sm text-left">
 
-            </div>
-
-            {/* TABLET + DESKTOP TABLE VIEW */}
-            <div className="hidden sm:block overflow-x-auto">
-
-              <table className="w-full text-sm text-left">
-
-                <thead className="bg-gray-50 text-gray-600">
-                  <tr>
-                    <th className="p-4">S.N</th>
-                    <th className="p-4">Invoice</th>
-                    <th className="p-4">Customer</th>
-                    <th className="p-4">Date</th>
-                    <th className="p-4">Subtotal</th>
-                    <th className="p-4">Discount</th>
-                    <th className="p-4">Total</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4 text-right">View</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-gray-100">
-
-                  {items.map((sale, index) => (
-                    <tr key={sale.id} className="hover:bg-gray-50">
-
-                      <td className="p-4 font-semibold whitespace-nowrap">
-                        {(page - 1) * 10 + index + 1}
-                      </td>
-                      <td className="p-4 font-semibold whitespace-nowrap">
-                        {sale.invoiceNumber}
-                      </td>
-
-                      <td className="p-4">
-                        <div className="font-medium">
-                          {sale.customerName}
-                        </div>
-
-                        <div className="text-xs text-gray-500">
-                          {sale.customerPhone || "No phone"}
-                        </div>
-                      </td>
-
-                      <td className="p-4 whitespace-nowrap"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          toggleCalendar()
-                        }}
-                      >
-                        {useBS ? formatBSDateTimeShort(sale.soldAt) : formatDate(sale.soldAt)}
-                      </td>
-
-                      <td className="p-4 whitespace-nowrap">
-                        {formatNPR(sale.subtotal)}
-                      </td>
-
-                      <td className="p-4 text-red-600 whitespace-nowrap">
-                        {formatNPR(sale.discountAmount)}
-                      </td>
-
-                      <td className="p-4 font-bold whitespace-nowrap">
-                        {formatNPR(sale.totalAmount)}
-                      </td>
-
-                      <td className="p-4">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${sale.status === "COMPLETED"
-                            ? "bg-green-50 text-green-700"
-                            : "bg-red-50 text-red-700"
-                            }`}
-                        >
-                          {sale.status}
-                        </span>
-                      </td>
-
-                      <td className="p-4 text-right">
-                        <Link
-                          href={`/admin/sales/${sale.id}`}
-                          className="inline-flex p-2 rounded-lg text-teal-700 hover:bg-teal-50"
-                          aria-label="View invoice"
-                        >
-                          <Eye size={19} />
-                        </Link>
-                      </td>
-
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="p-4">S.N</th>
+                      <th className="p-4">Invoice</th>
+                      <th className="p-4">Customer</th>
+                      <th className="p-4">Date</th>
+                      <th className="p-4">Subtotal</th>
+                      <th className="p-4">Discount</th>
+                      <th className="p-4">Total</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 text-right">View</th>
                     </tr>
-                  ))}
+                  </thead>
 
-                </tbody>
-              </table>
+                  <tbody className="divide-y divide-gray-100">
 
-            </div>
+                    {items.map((sale, index) => (
+                      <tr key={sale.id} className="hover:bg-gray-50">
 
-            {/* MOBILE: LOAD MORE */}
-            {page < totalPages && (
-              <div className="sm:hidden flex flex-col items-center p-4 border-t border-gray-100">
+                        <td className="p-4 font-semibold whitespace-nowrap">
+                          {(page - 1) * 10 + index + 1}
+                        </td>
+                        <td className="p-4 font-semibold whitespace-nowrap">
+                          {sale.invoiceNumber}
+                        </td>
 
-                <button
-                  onClick={() => loadSales(page + 1, true)}
-                  disabled={loading}
-                  className="flex rounded-2xl items-center justify-center gap-2 w-full border border-teal-100 bg-white px-6 py-3.5 rounded-xl font-semibold text-teal-800 hover:bg-teal-50 active:scale-[0.98] transition disabled:opacity-50"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 size={19} className="animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      Load more sales
-                      <ChevronRight size={18} />
-                    </>
-                  )}
-                </button>
+                        <td className="p-4">
+                          <div className="font-medium">
+                            {sale.customerName}
+                          </div>
 
-                <p className="text-xs text-gray-400 mt-3">
-                  Page {page} of {totalPages}
-                </p>
+                          <div className="text-xs text-gray-500">
+                            {sale.customerPhone || "No phone"}
+                          </div>
+                        </td>
+
+                        <td className="p-4 whitespace-nowrap"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleCalendar()
+                          }}
+                        >
+                          {useBS ? formatBSDateTimeShort(sale.soldAt) : formatDate(sale.soldAt)}
+                        </td>
+
+                        <td className="p-4 whitespace-nowrap">
+                          {formatNPR(sale.subtotal)}
+                        </td>
+
+                        <td className="p-4 text-red-600 whitespace-nowrap">
+                          {formatNPR(sale.discountAmount)}
+                        </td>
+
+                        <td className="p-4 font-bold whitespace-nowrap">
+                          {formatNPR(sale.totalAmount)}
+                        </td>
+
+                        <td className="p-4">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${sale.status === "COMPLETED"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-700"
+                              }`}
+                          >
+                            {sale.status}
+                          </span>
+                        </td>
+
+                        <td className="p-4 text-right">
+                          <Link
+                            href={`/admin/sales/${sale.id}`}
+                            className="inline-flex p-2 rounded-lg text-teal-700 hover:bg-teal-50"
+                            aria-label="View invoice"
+                          >
+                            <Eye size={19} />
+                          </Link>
+                        </td>
+
+                      </tr>
+                    ))}
+
+                  </tbody>
+                </table>
 
               </div>
-            )}
 
-            {/* TABLET + DESKTOP: PREVIOUS / NEXT */}
-            <div className="hidden sm:flex p-4 border-t border-gray-100 justify-between items-center gap-3">
+              {/* MOBILE: LOAD MORE */}
+              {page < totalPages && (
+                <div className="sm:hidden flex flex-col items-center p-4 border-t border-gray-100">
 
-              <span className="text-sm text-gray-500 whitespace-nowrap">
-                Page {page} of {Math.max(1, totalPages)}
-              </span>
+                  <button
+                    onClick={() => loadSales(page + 1, true)}
+                    disabled={loading}
+                    className="flex rounded-2xl items-center justify-center gap-2 w-full border border-teal-100 bg-white px-6 py-3.5 rounded-xl font-semibold text-teal-800 hover:bg-teal-50 active:scale-[0.98] transition disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 size={19} className="animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        Load more sales
+                        <ChevronRight size={18} />
+                      </>
+                    )}
+                  </button>
 
-              <div className="flex gap-2">
+                  <p className="text-xs text-gray-400 mt-3">
+                    Page {page} of {totalPages}
+                  </p>
 
-                <button
-                  disabled={page <= 1 || loading}
-                  onClick={() => loadSales(page - 1, false)}
-                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-gray-50"
-                >
-                  Previous
-                </button>
+                </div>
+              )}
 
-                <button
-                  disabled={page >= totalPages || loading}
-                  onClick={() => loadSales(page + 1, false)}
-                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-gray-50"
-                >
-                  Next
-                </button>
+              {/* TABLET + DESKTOP: PREVIOUS / NEXT */}
+              <div className="hidden sm:flex p-4 border-t border-gray-100 justify-between items-center gap-3">
+
+                <span className="text-sm text-gray-500 whitespace-nowrap">
+                  Page {page} of {Math.max(1, totalPages)}
+                </span>
+
+                <div className="flex gap-2">
+
+                  <button
+                    disabled={page <= 1 || loading}
+                    onClick={() => loadSales(page - 1, false)}
+                    className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-gray-50"
+                  >
+                    Previous
+                  </button>
+
+                  <button
+                    disabled={page >= totalPages || loading}
+                    onClick={() => loadSales(page + 1, false)}
+                    className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-gray-50"
+                  >
+                    Next
+                  </button>
+
+                </div>
 
               </div>
-
-            </div>
-          </>
-        )}
-
+            </>
+          )}
+        </div>
       </section>
 
       {/* SALES ANALYTICS BOTTOM DRAWER */}

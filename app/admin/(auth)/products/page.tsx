@@ -445,7 +445,7 @@ export default function ProductsPage() {
       </header>
 
       {/* Product listing */}
-      <section className="max-w-7xl mx-auto  px-4 sm:px-6 lg:px-8">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
         <div className="flex items-center justify-between mb-4">
 
@@ -1206,14 +1206,14 @@ export default function ProductsPage() {
 
       <section
         className="
-    sm:hidden
-    fixed inset-x-0 bottom-0 z-[80]
-    bg-white
-    rounded-t-[24px]
-    border-t border-gray-100
-    shadow-[0_-6px_28px_rgba(15,23,42,0.10)]
-    pb-[env(safe-area-inset-bottom)]
-  "
+          sm:hidden
+          fixed inset-x-0 bottom-0 z-[80]
+          bg-white
+          rounded-t-[24px]
+          border-t border-gray-100
+          shadow-[0_-6px_28px_rgba(15,23,42,0.10)]
+          pb-[env(safe-area-inset-bottom)]
+        "
       >
         {/* Drawer handle */}
         <div className="flex justify-center pt-2.5 pb-1">
